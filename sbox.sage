@@ -41,8 +41,8 @@ C1 = vector(BF, [1, 1, 0, 0, 1, 0, 1, 1])
 C2 = vector(BF, [1, 1, 0, 1, 0, 0, 1, 1])
 
 # sbox constants
-S_M     = 8                      #input bit length
-S_N     = 8                      #output bit length
+S_M     = 8               #input bit length
+S_N     = 8               #output bit length
 S_SIZE = 2 ^ S_M          #the number of elements
 
 ###########################################################
