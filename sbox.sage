@@ -1,11 +1,11 @@
 from sage.crypto.boolean_function import BooleanFunction
+from sage.modules.free_module import VectorSpace
 
-# define GF(2^8)
+V = VectorSpace(GF(2), 8)
+
 R.<x> = PolynomialRing(GF(2))
 f = x^8 + x^7 + x^6 + x^5 + x^4 + x^2 + 1
 F.<a> = GF(2^8, modulus=f)
-
-BF = GF(2) 
 
 def byte_to_poly(byte):
     coeffs = [(byte >> i) & 1 for i in range(8)]
@@ -15,39 +15,41 @@ def poly_to_byte(poly):
     coeffs = poly.polynomial().coefficients(sparse=False)
     return sum(int(c) << i for i, c in enumerate(coeffs))
 
-A1=matrix(BF,[
-   [1,0,1,0,0,1,1,1],
-   [0,1,0,0,1,1,1,1],
-   [1,0,0,1,1,1,1,0],
-   [0,0,1,1,1,1,0,1],
-   [0,1,1,1,1,0,1,0],
-   [1,1,1,1,0,1,0,0],
-   [1,1,1,0,1,0,0,1],
-   [1,1,0,1,0,0,1,1]
- ])
- 
-A2=matrix(BF,[
-  [1,1,0,0,1,0,1,1],
-  [1,0,0,1,0,1,1,1],
-  [0,0,1,0,1,1,1,1],
-  [0,1,0,1,1,1,1,0],
-  [1,0,1,1,1,1,0,0],
-  [0,1,1,1,1,0,0,1],
-  [1,1,1,1,0,0,1,0],
-  [1,1,1,0,0,1,0,1]
- ])
+M = MatrixSpace(GF(2), 8, 8)
 
-C1 = vector(BF, [1, 1, 0, 0, 1, 0, 1, 1])  
-C2 = vector(BF, [1, 1, 0, 1, 0, 0, 1, 1])
+A1 = M ([
+    [1,0,1,0,0,1,1,1],
+    [0,1,0,0,1,1,1,1],
+    [1,0,0,1,1,1,1,0],
+    [0,0,1,1,1,1,0,1],
+    [0,1,1,1,1,0,1,0],
+    [1,1,1,1,0,1,0,0],
+    [1,1,1,0,1,0,0,1],
+    [1,1,0,1,0,0,1,1]
+   ])
+ 
+A2 = M([
+   [1,1,0,0,1,0,1,1],
+   [1,0,0,1,0,1,1,1],
+   [0,0,1,0,1,1,1,1],
+   [0,1,0,1,1,1,1,0],
+   [1,0,1,1,1,1,0,0],
+   [0,1,1,1,1,0,0,1],
+   [1,1,1,1,0,0,1,0],
+   [1,1,1,0,0,1,0,1]
+  ])
+
+C1 = V([1, 1, 0, 0, 1, 0, 1, 1])  
+C2 = V([1, 1, 0, 1, 0, 0, 1, 1])
 
 # sbox constants
-S_M     = 8               #input bit length
-S_N     = 8               #output bit length
+S_M     = 8                      #input bit length
+S_N     = 8                      #output bit length
 S_SIZE = 2 ^ S_M          #the number of elements
 
 ###########################################################
 def sm4_sbox(byte):
-    v = vector(BF, [(byte >> i) & 1 for i in range(S_M-1, -1, -1)])
+    v = V([(byte >> i) & 1 for i in range(S_M-1, -1, -1)])
 
     v1 = A1 * v + C1
     r_byte = sum(int(v1[i]) << i for i in range(S_M-1, -1, -1))
@@ -59,25 +61,28 @@ def sm4_sbox(byte):
     else:
        inv = 0
 
-    v2 = vector(BF,[(inv >> i)  & 1 for i in range(S_M)])  
+    v2 = V([(inv >> i)  & 1 for i in range(S_M)])  
     r = A2 * v2 + C2
     return sum(int(r[i]) << (S_M-1-i) for i in range(S_M))
 
-sm4_sbox_table = [sm4_sbox(i) for i in range(S_SIZE)]
+def sm4_sbox_create():
+    table = [sm4_sbox(i) for i in range(S_SIZE)]
+    return table
 
-print(f"const uint8_t sm4_sbox[{S_SIZE}] = {{")
-for i in range(0, S_SIZE, 16):
-    row = ", ".join(f"0x{s:02X}" for s in sm4_sbox_table[i:i+16])
-    print("    " + row + ",")
-print("};", end="\n\n")
+def sm4_sbox_print(S):
+    print(f"const uint8_t sm4_sbox[{S_SIZE}] = {{")
+
+    for i in range(0, S_SIZE, 16):
+        row = ", ".join(f"0x{s:02X}" for s in S[i:i+16])
+        print("    " + row + ",")
+
+    print("};", end="\n\n")
 
 ###########################################################
 def sbox_balance(S):
     for j in range(S_N):
        cnt = sum((S[i]>>j)&1 for i in range(S_SIZE))
        print(f"Output bit {j}: {cnt} ones")
-
-sbox_balance(sm4_sbox_table);  print()
 
 ###########################################################
 def max_nonlinearity(n):
@@ -99,21 +104,6 @@ def sbox_boolfun_property(S):
 
     print(f"the minimum nonlinearity is {min_nl}, theory max nonlinearity is {max_nonlinearity(S_N)}")
 
-sbox_boolfun_property(sm4_sbox_table);  print("")
-
-###########################################################
-def sbox_differential_uniformity(S):
-    ddt = {}
-    for dx in range(1, S_SIZE):
-        for x in range(S_SIZE):
-            dy = S[x] ^^ S[x^^dx]
-            ddt[(dx, dy)] = ddt.get((dx, dy), 0) + 1
-
-    delta = max(ddt.values())
-    print("Differential Uniformity =", delta)
-
-sbox_differential_uniformity(sm4_sbox_table);  print()
-
 ###########################################################
 def sbox_fixed_points(S):
     fps = []
@@ -121,9 +111,6 @@ def sbox_fixed_points(S):
         if S[x] == x:
             fps.append(hex(x))
     return fps
-
-fps = sbox_fixed_points(sm4_sbox_table)
-print(f"has {len(fps)} fixed points: {fps}", end="\n\n")
 
 ###########################################################
 def flip_bit(x, i):
@@ -143,8 +130,6 @@ def sbox_sac(S):
     # Normalize to probability
     sac_matrix = sac_matrix / S_SIZE
     return sac_matrix
-
-print(sbox_sac(sm4_sbox_table));  print()
 
 def sbox_check_pck(S, k):
     bool_funcs = []
@@ -168,5 +153,46 @@ def sbox_check_pck(S, k):
         r = bf_satisfy_pcks[i]
         print(f"bf[{i}] satify PC({k}):{r}")
 
-for k in range(1, 4):
-    sbox_check_pck(sm4_sbox_table, k);  print()
+###########################################################
+def sbox_dict_print(Dict):
+    col_h = " ".join(f"0x{b:02x}" for b in range(S_SIZE))
+    print(" ", end="");  print(col_h)
+   
+    for a in range(S_SIZE):
+        row = f"0x{a:02x} "
+        for b in range(S_SIZE):
+            if (a,b) in Dict:
+                row += str(Dict[(a,b)])
+            else:
+                row += "-"
+            row += " "
+        print(row)
+
+###########################################################
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--out_basic", action="store_true")
+parser.add_argument("--out_sbox", action="store_true")
+args = parser.parse_args()
+
+sbox_table = sm4_sbox_create()
+
+if args.out_sbox:
+    sm4_sbox_print(sbox_table)
+
+if args.out_basic:
+    sbox_balance(sbox_table)
+    print()
+   
+    sbox_boolfun_property(sbox_table)
+    print()
+    
+    fps = sbox_fixed_points(sbox_table)
+    print(f"has {len(fps)} fixed points: {fps}", end="\n\n")
+
+    print(sbox_sac(sbox_table))
+    print()
+
+    for k in range(1, 4):
+        sbox_check_pck(sbox_table, k);  print()
